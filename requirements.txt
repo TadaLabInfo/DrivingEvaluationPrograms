@@ -1,0 +1,14 @@
+markdown-it-py==3.0.0
+mdurl==0.1.2
+numpy==1.23.5
+cython
+onnxruntime-gpu
+onnxruntime
+pandas==2.2.3
+Pygments==2.19.1
+python-dateutil==2.9.0.post0
+pytz==2025.1
+rich==13.9.4
+six==1.17.0
+typing_extensions==4.12.2
+tzdata==2025.1

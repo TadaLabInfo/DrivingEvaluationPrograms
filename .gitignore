@@ -1,0 +1,15 @@
+.venv/
+ANJ031/
+ANJO001/
+ANJO001_info/
+ANJO001_temp/
+ANJS001/
+ANJS001_temp/
+ANJS001_temp2/
+ANJS001_temp3/
+ANJS001_temp4/
+OLD(no use)/
+aichi-network4.csv
+*.onnx
+test_network4.csv
+__pycache__/
