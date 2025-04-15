@@ -3,6 +3,7 @@ import pandas as pd
 import math
 import numpy as np
 import os
+import json
 import logging
 from rich.progress import (
     Progress,
@@ -18,7 +19,8 @@ from rich.progress import (
 class TurnDetector:
     """
     TurnDetector クラスは、GPS データとネットワーク情報を利用して車両の進行方向（直進、左折、右折）を判定します。
-    また、判定結果に基づいてCSVファイルのリネームも行います。
+    また、判定結果に基づいてCSVファイル内部にメタデータを付与します。
+    ファイル名自体は変更せず、内部の先頭行にメタデータ(JSON)のコメント行を追加します。
 
     Attributes:
         dir_path (str): GPS CSV ファイルが格納されたディレクトリのパス。
@@ -26,25 +28,23 @@ class TurnDetector:
         gps_csvs (list): 指定ディレクトリ内の全てのGPS CSVファイルパスのリスト。
         net_df (pandas.DataFrame): ネットワーク情報のデータフレーム。
         logger (logging.Logger): ロギング用オブジェクト。
-        distance_thresh (float): 交差点中心からの判定用距離（単位：メートル、例：50）。
+        threshold_m (float): 入口・退出判定の距離閾値（メートル単位、例：10）。
     Methods:
-        __init__(self, dir_path, net_path, distance_thresh=50): 初期化。
+        __init__(self, dir_path, net_path, threshold_m=10): 初期化。
         __call__(self): main() メソッドを呼び出すためのオーバーロード。
         haversine(self,...): 2点間の距離(km)を計算する。
         angle_between(self,...): 2つのベクトル間の角度(度)を計算する。
         cross_z(self,...): 2次元ベクトルの外積Z成分を計算する。
         turn_judgment(self,...): 中心点と進入・退出点から進行方向を判定する。
-        get_links(self, net_rec): ネットワークレコードから有効なリンク情報を抽出。
-        get_nearest_link(self, pt, links): 指定点ptに最も近いリンク情報を返す。
-        process_csv(self, gps_csv): 1ファイル分のGPSデータを読み込み処理を実行する。
+        get_links(self, net_rec): ネットワークレコードから有効なリンク情報を抽出（各リンクのroadid, width, lane含む）。
+        detect_entry_exit(self, gps_df, links, threshold_m): GPS全レコードを走査して、各リンク座標との距離が閾値以内の最初/最後のレコードを入口・退出とする。
+        process_csv(self, gps_csv): 1ファイル分のGPSデータを処理し、ファイル先頭にメタデータを埋め込む。
         main(self): 全てのGPS CSVファイルに対してprocess_csvを実行する。
     """
-
-    def __init__(self, dir_path, net_path, distance_thresh=50):
+    def __init__(self, dir_path, net_path, threshold_m=10):
         self.dir_path = dir_path
         self.net_path = net_path
-        # distance_threshはメートル単位。haversineはkmを返すので換算して保持する
-        self.distance_thresh = distance_thresh / 1000.0  # 単位：km
+        self.threshold_m = threshold_m  # 単位：m
 
         self.gps_csvs = glob.glob(os.path.join(dir_path, "*", "*.csv"))
         self.net_df = pd.read_csv(net_path)
@@ -91,6 +91,10 @@ class TurnDetector:
             return "左折", ang
 
     def get_links(self, net_rec):
+        """
+        ネットワークレコードから有効なリンク情報を抽出する。
+        各リンクについて、longitudeX, latitudeX, roadidX, linkX, widthX, laneX の情報を含める。
+        """
         links = []
         for i in range(1, 7):
             lon_col = f"longitude{i}"
@@ -100,33 +104,57 @@ class TurnDetector:
                 lon_val = net_rec[lon_col]
                 lat_val = net_rec[lat_col]
                 if not (pd.isna(lon_val) or pd.isna(lat_val)):
-                    links.append({"link": net_rec.get(link_col, i), "lon": lon_val, "lat": lat_val})
+                    roadid = net_rec.get(f"roadid{i}", None)
+                    width = net_rec.get(f"width{i}", None)
+                    lane = net_rec.get(f"lane{i}", None)
+                    links.append({
+                        "link": str(net_rec.get(link_col, i)),
+                        "lon": lon_val,
+                        "lat": lat_val,
+                        "roadid": roadid,
+                        "width": width,
+                        "lane": lane
+                    })
         return links
 
-    def get_nearest_link(self, pt, links):
-        dists = []
-        for link in links:
-            d = self.haversine(pt[0], pt[1], link["lon"], link["lat"])
-            dists.append(d)
-        min_index = np.argmin(dists)
-        return links[min_index], dists[min_index]
+    def detect_entry_exit(self, gps_df, links, threshold_m):
+        """
+        GPSデータ全レコードから、各リンク座標との距離が threshold_m (メートル) 以下となるレコードを探索する。
+        順方向に探索して最初にヒットしたものを入口、逆方向に探索して最初にヒットしたものを退出とする。
+        """
+        threshold_km = threshold_m / 1000.0
+        entry_link = None
+        # 順方向探索（入口）
+        for idx, row in gps_df.iterrows():
+            point = (row["longitude"], row["latitude"])
+            candidates = []
+            for link in links:
+                d = self.haversine(point[0], point[1], link["lon"], link["lat"])
+                if d <= threshold_km:
+                    candidates.append((link, d))
+            if candidates:
+                entry_link = min(candidates, key=lambda x: x[1])[0]
+                break
 
-    def select_point_by_distance(self, gps_df, center, target_range, idx_start, idx_end):
-        """
-        gps_dfのidx_start～idx_end の範囲から、交差点中心からの距離がtarget_rangeに最も近いGPS点
-        （行データ）を返す。
-        """
-        subset = gps_df.iloc[idx_start:idx_end+1].copy()
-        # 各GPS点とcenterとの距離(km)を算出
-        subset["dist"] = subset.apply(lambda row: self.haversine(center[0], center[1],
-                                                                  row["longitude"], row["latitude"]), axis=1)
-        # target_rangeと距離の差が最小となる行を探す
-        diff = (subset["dist"] - target_range).abs()
-        best_idx = diff.idxmin()
-        return subset.loc[best_idx]
+        exit_link = None
+        # 逆方向探索（退出）
+        for idx in gps_df.index[::-1]:
+            row = gps_df.loc[idx]
+            point = (row["longitude"], row["latitude"])
+            candidates = []
+            for link in links:
+                d = self.haversine(point[0], point[1], link["lon"], link["lat"])
+                if d <= threshold_km:
+                    candidates.append((link, d))
+            if candidates:
+                exit_link = min(candidates, key=lambda x: x[1])[0]
+                break
+
+        return entry_link, exit_link
 
     def process_csv(self, gps_csv):
-        gps_df = pd.read_csv(gps_csv)
+        # pandasはcomment="#"により先頭のメタデータ行を読み飛ばす
+        gps_df = pd.read_csv(gps_csv, comment="#")
         objid = gps_df["objectid"].iloc[0]
         net_rec = self.net_df[self.net_df["objectid"] == objid]
         if net_rec.empty:
@@ -139,53 +167,65 @@ class TurnDetector:
             print("ネットワークレコードに有効なリンク座標が見つかりません。ファイル:", gps_csv)
             return
 
-        # 交差点中心から各GPS点の距離を計算して、最短のindexを取得
-        distances = gps_df.apply(lambda row: self.haversine(center[0], center[1],
-                                                            row["longitude"], row["latitude"]), axis=1)
-        min_idx = distances.idxmin()
+        # GPS全レコードから、閾値内での入口・退出リンクを検出
+        entry_link, exit_link = self.detect_entry_exit(gps_df, links, threshold_m=self.threshold_m)
+        if entry_link is None or exit_link is None:
+            print("GPSデータから入口または退出のリンクが検出できませんでした。ファイル:", gps_csv)
+            return
 
-        # 進入点: 交差点に入る前（0～min_idx）の中から、中心から指定距離(self.distance_thresh)に近い点を採用
-        if min_idx > 0:
-            inbound_row = self.select_point_by_distance(gps_df, center, self.distance_thresh, 0, min_idx)
-        else:
-            inbound_row = gps_df.iloc[0]
+        if entry_link["link"] == exit_link["link"]:
+            self.logger.warning(f"予期せぬ動作: objectid {objid} のファイル {gps_csv} で入口リンクと退出リンクが同じです。threshold_mを変更すると解決するかもしれません。")
 
-        # 退出点: 交差点通過後（min_idx～最終行）の中から、中心から指定距離に近い点を採用
-        if min_idx < len(gps_df) - 1:
-            outbound_row = self.select_point_by_distance(gps_df, center, self.distance_thresh, min_idx, len(gps_df)-1)
-        else:
-            outbound_row = gps_df.iloc[-1]
-
-        in_pt = (inbound_row["longitude"], inbound_row["latitude"])
-        out_pt = (outbound_row["longitude"], outbound_row["latitude"])
-        
-        # 進入リンク・退出リンクの判定
-        in_link, in_dist = self.get_nearest_link(in_pt, links)
-        out_link, out_dist = self.get_nearest_link(out_pt, links)
-        
-        # もし進入リンクと退出リンクが同じ場合は想定外の動作なのでloggingで出力
-        if in_link["link"] == out_link["link"]:
-            self.logger.warning(f"予期せぬ動作: objectid {objid} のファイル {gps_csv} で進入リンクと退出リンクが同じです。distance_threshを変更すると解決するかもしれません。")
-
-        base_fname = os.path.splitext(os.path.basename(gps_csv))[0]
-
-        stoplink_field = net_rec.get("stoplink", "")
-        stop_present = str(in_link["link"]) in ("" if pd.isna(stoplink_field) else str(stoplink_field))
-        stop_tag = "stop1" if stop_present else "stop0"
-        
-        signal_present = int(net_rec.get("sig", 0)) == 1
-        sig_tag = "sig1" if signal_present else "sig0"
-        
+        # 進行方向の判定
         turn, angle_val = self.turn_judgment(
             center,
-            (in_link["lon"], in_link["lat"]),
-            (out_link["lon"], out_link["lat"])
+            (entry_link["lon"], entry_link["lat"]),
+            (exit_link["lon"], exit_link["lat"])
         )
-        turn_tag = {"直進": "STR", "左折": "LFT", "右折": "RGT"}.get(turn, "UKN")
+        # 日本語の進行方向を英語表記に変換するマップ
+        turn_map = {"直進": "STR", "右折": "RGT", "左折": "LFT"}
+        turn_en = turn_map.get(turn, "UKN")
         
-        new_fname = f"{base_fname}_{stop_tag}_{sig_tag}_{turn_tag}_link_{in_link['link']}_to_{out_link['link']}.csv"
-        new_path = os.path.join(os.path.dirname(gps_csv), new_fname)
-        os.rename(gps_csv, new_path)
+        # stoplinkのフィールドから、進入方向に一時停止があるかどうかを判定（0: なし、1: あり）
+        stoplink_field = net_rec.get("stoplink", "")
+        if pd.isna(stoplink_field):
+            stop_value = 0
+        else:
+            stop_value = 1 if str(entry_link["link"]) in str(stoplink_field) else 0
+
+        # メタデータとして記録する情報を辞書にまとめる（angleは削除）
+        metadata = {
+            "objectid": objid,
+            "center": {"lon": center[0], "lat": center[1]},
+            "stop": stop_value,
+            "sig": int(net_rec.get("sig", 0)),
+            "turn": turn_en,
+            "entry_link": {
+                "link": entry_link["link"],
+                "roadid": entry_link["roadid"],
+                "width": entry_link["width"],
+                "lon": entry_link["lon"],
+                "lat": entry_link["lat"]
+            },
+            "exit_link": {
+                "link": exit_link["link"],
+                "roadid": exit_link["roadid"],
+                "width": exit_link["width"],
+                "lon": exit_link["lon"],
+                "lat": exit_link["lat"]
+            }
+        }
+
+        # json.dumpsでdefault=strを設定：シリアライズできない型を文字列に変換する
+        metadata_comment = "#METADATA: " + json.dumps(metadata, default=str) + "\n"
+        with open(gps_csv, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        # 既に先頭に"#METADATA:"がある場合は削除
+        if lines and lines[0].startswith("#METADATA:"):
+            lines = lines[1:]
+        with open(gps_csv, 'w', encoding='utf-8') as f:
+            f.write(metadata_comment)
+            f.writelines(lines)
 
     def main(self):
         with Progress(
@@ -197,8 +237,8 @@ class TurnDetector:
             TimeElapsedColumn(),
             TimeRemainingColumn(),
         ) as progress:
-            task = progress.add_task("右左折を判定中...", total=len(self.gps_csvs))
+            task = progress.add_task("GPSデータの処理中...", total=len(self.gps_csvs))
             for gps_csv in self.gps_csvs:
                 self.process_csv(gps_csv)
                 progress.update(task, advance=1)
-            progress.update(task, description="[green]右左折を判定中...完了")
+            progress.update(task, description="[green]処理完了")

@@ -45,10 +45,7 @@ class CreateMovie:
             return pd.NaT
         # 数値であっても文字列に変換する
         date_str = str(date_str)
-        if "." in date_str:  # ミリ秒が含まれる場合
-            return pd.to_datetime(date_str, format="%Y-%m-%d %H:%M:%S.%f%z")
-        else:
-            return pd.to_datetime(date_str, format="%Y-%m-%d %H:%M:%S%z")
+        return pd.to_datetime(date_str)
         
     # 動画ファイル名から「YYMMDD-HHMMSS」の部分を抽出する関数
     def parse_video_start_time(self, video_filename):
@@ -90,7 +87,8 @@ class CreateMovie:
                 # ファイル名からディレクトリとファイル名を分割し、ファイル名は拡張子も除去する
                 dir_name, file_name = os.path.split(gps_csv)
                 save_video_path = os.path.join(dir_name, os.path.splitext(file_name)[0] + f"_{self.accum_distance}m.mp4")
-                gps_df = pd.read_csv(gps_csv)
+                # gps_df = pd.read_csv(gps_csv)
+                gps_df = pd.read_csv(gps_csv, comment="#")
                 # GPSデータの日時をタイムスタンプに変換
                 gps_df["date_time"] = gps_df["date_time"].apply(self.parse_date_time)
             

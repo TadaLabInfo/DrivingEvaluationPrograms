@@ -342,10 +342,8 @@ class InfoExtractor:
         gps_df["date_time"] = pd.to_datetime(
             gps_df["date_time"], format="%Y:%m:%d %H:%M:%SZ"
         )
-        # datetime型の"date_time"列にUTCタイムゾーンを設定
-        gps_df["date_time"] = gps_df["date_time"].dt.tz_localize("UTC")
-        # タイムゾーンを日本標準時（JST）に変換
-        gps_df["date_time"] = gps_df["date_time"].dt.tz_convert("Asia/Tokyo")
+        # datetime型の"date_time"列に+9時間を加算
+        gps_df["date_time"] = gps_df["date_time"] + pd.Timedelta(hours=9)
 
         # "date_time"でソートして時系列順に並べ替え
         gps_df.sort_values("date_time", inplace=True)

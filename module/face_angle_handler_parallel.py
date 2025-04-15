@@ -164,7 +164,7 @@ class FaceAngleHandler:
         end_time = gps_df_interpolate["date_time"].iloc[-1]
         rep_time = np.linspace(start_time.value, end_time.value, len(rep_mask))
         rep_time = pd.to_datetime(rep_time)
-        rep_time = rep_time.tz_localize("UTC").tz_convert("Asia/Tokyo")
+        # rep_time = rep_time.tz_localize("UTC").tz_convert("Asia/Tokyo")
         rep_df = pd.DataFrame({"6dreplaced": rep_mask, "date_time": rep_time})
         nearest_indices = np.searchsorted(rep_df["date_time"], fixed_yaw_df["date_time"])
         fixed_yaw_df["6dreplaced"] = rep_df["6dreplaced"].iloc[nearest_indices].values
@@ -493,12 +493,12 @@ class FaceAngleHandler:
         face_angles_df = pd.DataFrame(
             {"face_angle": face_angles, "date_time": face_angles_time}
         )
-        # UTCタイムゾーンを設定
-        face_angles_df["date_time"] = face_angles_df["date_time"].dt.tz_localize("UTC")
-        # 日本標準時（JST）に変換
-        face_angles_df["date_time"] = face_angles_df["date_time"].dt.tz_convert(
-            "Asia/Tokyo"
-        )
+        # # UTCタイムゾーンを設定
+        # face_angles_df["date_time"] = face_angles_df["date_time"].dt.tz_localize("UTC")
+        # # 日本標準時（JST）に変換
+        # face_angles_df["date_time"] = face_angles_df["date_time"].dt.tz_convert(
+        #     "Asia/Tokyo"
+        # )
         # GPSデータの時刻に最も近い顔向き角度を取得
         nearest_indices = np.searchsorted(
             face_angles_df["date_time"], gps_df["date_time"]

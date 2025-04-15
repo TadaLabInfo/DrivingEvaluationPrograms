@@ -21,13 +21,14 @@ logging.getLogger("matplotlib.pyplot").setLevel(logging.ERROR)
 
 # 処理するディレクトリのパス
 # dir_path = "ANJS001"
-# dir_path = "ANJS001_temp2"
+# dir_path = "ANJS001_temp"
+dir_path = "ANJS001_1023"
 # dir_path = "ANJO001_temp"
-dir_path = "ANJO001"
+# dir_path = "ANJO001"
 
 # 道路ネットワークデータのパス
-# road_network_csv = "aichi-network4.csv"
-road_network_csv = "test_network4.csv"
+road_network_csv = "aichi-network4.csv"
+# road_network_csv = "test_network4.csv"
 
 # 情報レベルのログで出力
 logger.info(f"対象ディレクトリ: {dir_path}, 道路ネットワークデータ: {road_network_csv}")
@@ -51,13 +52,13 @@ info_extractor = InfoExtractor(
 )
 # GPSデータ(重複削除&補完したもの)と顔向き角度を抽出
 combine_info_df = info_extractor()
-# # GPSデータ(重複削除&補完したもの)と顔向き角度のパス(ファイルを指定する場合)
-# combine_info_df = "ANJO001_temp_info/combined_interpolated_fixed_gps_data.csv"
+# GPSデータ(重複削除&補完したもの)と顔向き角度のパス(ファイルを指定する場合)
+# combine_info_df = "ANJS001_temp3_info/combined_interpolated_fixed_gps_data.csv"
 
 # 交差点情報の保存先ディレクトリを取得
 info_save_dir = info_extractor.info_save_dir
-# # 交差点情報の保存先ディレクトリ(ファイルを指定する場合)
-# info_save_dir = "ANJO001_temp_info"
+# 交差点情報の保存先ディレクトリ(ファイルを指定する場合)
+# info_save_dir = "ANJS001_temp_info"
 
 logger.info("道路ネットワークデータより交差点の検出を開始")
 logger.debug(f"使用プログラム: {inspect.getfile(CrossRoadFinderVectorized)}")
@@ -66,14 +67,15 @@ finder = CrossRoadFinderVectorized(
     dir_path=dir_path,  # 動画ファイルが格納されたディレクトリのパス
     road_network_path=road_network_csv,  # 道路ネットワークデータのパス
     info_path=combine_info_df,  # GPSデータのパス
-    threshold=50,  # 交差点中心からの距離の閾値
-    extension_distance=150,  # 交差点の拡張距離(thresholdが50、これが150なら200m分のGPSデータをCSVに含める)
+    threshold=30,  # 交差点中心からの距離の閾値 # あんまり遠すぎたら側道とかの交差点が抽出されてまう
+    extension_distance=300,  # 交差点の拡張距離(thresholdが30、これが300なら330m分のGPSデータをCSVに含める)(評価の際に最高150m必要なため余分に取っている)
+    # 道路ネットワークデータの道路IDが稀にあんんんまりにも交差点から遠いから、extension_distanceは300にした。道路ネットワークデータの作成者やばすぎ
     info_save_dir=info_save_dir,  # 交差点情報の保存先ディレクトリのパス
 )
 # 交差点IDを付与したGPSデータを取得
 gps_with_objectid = finder()
-# # 交差点ID付きのGPSデータのパス(ファイルを指定する場合)
-# gps_with_objectid = "ANJO001_temp_info/gps_data_with_objectid.csv"
+# 交差点ID付きのGPSデータのパス(ファイルを指定する場合)
+# gps_with_objectid = "ANJS001_temp3_info/gps_data_with_objectid.csv"
 
 logger.info("objectidごとにGPSデータの重複を除去開始")
 logger.debug(f"使用プログラム: {inspect.getfile(GPSRemover)}")
@@ -84,8 +86,8 @@ remover = GPSRemover(
 )
 # objectid列の重複を除去し、CSVに保存
 gps_with_objectid_removed = remover()
-# # 交差点ID付き(重複削除済み)のGPSデータのパス(ファイルを指定する場合)
-# gps_with_objectid_removed = "ANJO001_temp_info/gps_data_with_objectid_remove_duplicate.csv"  
+# 交差点ID付き(重複削除済み)のGPSデータのパス(ファイルを指定する場合)
+# gps_with_objectid_removed = "ANJS001_temp3_info/gps_data_with_objectid_remove_duplicate.csv"
 
 logger.info("objectidごとにGPSデータを分割開始")
 logger.debug(f"使用プログラム: {inspect.getfile(GPSSplitter)}")
@@ -96,8 +98,8 @@ splitter = GPSSplitter(
 )
 # objectidごとに分割したGPSデータを保存
 splitted_save_dir = splitter()
-# # # objectidごとに分割したGPSデータの保存先ディレクトリのパス(ファイルを指定する場合)
-# splitted_save_dir = "ANJO001_info/objectid_csvs"
+# objectidごとに分割したGPSデータの保存先ディレクトリのパス(ファイルを指定する場合)
+# splitted_save_dir = "ANJS001_1023_info\objectid_csvs"
 
 logger.info("直進(STR)・右折(RGT)・左折(LFT)を判定開始")
 logger.debug(f"使用プログラム: {inspect.getfile(TurnDetector)}")
@@ -105,7 +107,7 @@ logger.debug(f"使用プログラム: {inspect.getfile(TurnDetector)}")
 turn_detector = TurnDetector(
     dir_path=splitted_save_dir,  # GPSデータの保存先ディレクトリのパス
     net_path=road_network_csv,  # 道路ネットワークデータのパス
-    distance_thresh=50,  # 交差点中心からの距離の閾値
+    threshold_m=10,  # GPSデータ全体から、各リンク座標との距離がthreshold_m以内のものを検出し、最初に検出されたものを入り、最後に検出されたものを退出とする。
 )
 # 右左折を判定
 turn_detector()

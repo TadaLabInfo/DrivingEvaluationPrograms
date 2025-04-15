@@ -110,7 +110,8 @@ class GPSSplitter:
                 sub_df["objectid"] = id_str
                 
                 # 日時列（date_time）をdatetime型に変換（エラーはNaTに）
-                sub_df["date_time"] = pd.to_datetime(sub_df["date_time"], errors="coerce")
+                # sub_df["date_time"] = pd.to_datetime(sub_df["date_time"], errors="coerce")
+                sub_df["date_time"] = pd.to_datetime(sub_df["date_time"])
                 
                 # 日時順にソートする
                 sub_df.sort_values("date_time", inplace=True)
