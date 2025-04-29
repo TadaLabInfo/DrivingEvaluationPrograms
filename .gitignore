@@ -6,3 +6,4 @@ aichi-network4.csv
 test_network4.csv
 __pycache__/
 *_info/
+*.mp4
