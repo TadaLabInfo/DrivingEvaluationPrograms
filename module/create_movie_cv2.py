@@ -266,6 +266,7 @@ class CreateMovie:
                             face_angle = applicable.iloc[-1]["face_angle"]
                             sixd_replaced = applicable.iloc[-1]["6dreplaced"]
                             # 6dreplacedが0なら緑、1なら赤でテキスト描画
+                            # 緑: insight, 赤: 6drepnet
                             try:
                                 if int(sixd_replaced) == 0:
                                     text_color = (0, 255, 0)  # 緑
