@@ -307,7 +307,8 @@ class SixDRepNetCalculator:
         progress.remove_task(task)
 
         if self.save_angle_video:
-            h, w = draw_img_list[0].shape[:2]
+            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             # video_pathからディレクトリ名を取得し、保存用の別名を作成
             save_dir = os.path.join(self.save_dir, "6drepnet")
             os.makedirs(save_dir, exist_ok=True)
