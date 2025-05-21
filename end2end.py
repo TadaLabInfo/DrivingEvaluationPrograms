@@ -22,13 +22,14 @@ logging.getLogger("matplotlib.pyplot").setLevel(logging.ERROR)
 # 処理するディレクトリのパス
 # dir_path = "ANJS001"
 # dir_path = "ANJS001_temp"
-dir_path = "ANJS001_1023"
+# dir_path = "ANJS001_1023"
 # dir_path = "ANJO001_temp"
-# dir_path = "ANJO001"
+dir_path = "ANJO004"
 
 # 道路ネットワークデータのパス
-road_network_csv = "aichi-network4.csv"
+# road_network_csv = "aichi-network4.csv"
 # road_network_csv = "test_network4.csv"
+road_network_csv = "anjo_network4_self-made.csv"
 
 # 情報レベルのログで出力
 logger.info(f"対象ディレクトリ: {dir_path}, 道路ネットワークデータ: {road_network_csv}")
@@ -41,7 +42,7 @@ info_extractor = InfoExtractor(
     dir_path=dir_path,  # 動画ファイルが格納されたディレクトリのパス
     info_save_dir=None,  # GPSデータの保存先ディレクトリのパス(指定なしだとdir_pathに"_info"が追記されたディレクトリ)
     use_cuda=True,  # GPUを利用する場合はTrue
-    parallel=True,  # 並列処理を行う場合はTrue
+    parallel=False,  # 並列処理を行う場合はTrue
     save_angle_video=True,  # 顔向き角度の動画を保存する場合はTrue
     save_angle_csv=True,  # 顔向き角度のCSVを保存する場合はTrue
     sampling_rate=15,  # GPSデータのサンプリングレート
@@ -60,6 +61,7 @@ info_save_dir = info_extractor.info_save_dir
 # 交差点情報の保存先ディレクトリ(ファイルを指定する場合)
 # info_save_dir = "ANJS001_temp_info"
 
+
 logger.info("道路ネットワークデータより交差点の検出を開始")
 logger.debug(f"使用プログラム: {inspect.getfile(CrossRoadFinderVectorized)}")
 # CrossRoadFinderVectorizedのインスタンスを作成
@@ -77,17 +79,21 @@ gps_with_objectid = finder()
 # 交差点ID付きのGPSデータのパス(ファイルを指定する場合)
 # gps_with_objectid = "ANJS001_temp3_info/gps_data_with_objectid.csv"
 
-logger.info("objectidごとにGPSデータの重複を除去開始")
-logger.debug(f"使用プログラム: {inspect.getfile(GPSRemover)}")
-# GPS_Removerのインスタンスを作成
-remover = GPSRemover(
-    dir_path=info_save_dir,  # GPSデータの保存先ディレクトリのパス
-    gps_path=gps_with_objectid,  # 交差点ID付きのGPSデータのパス
-)
-# objectid列の重複を除去し、CSVに保存
-gps_with_objectid_removed = remover()
-# 交差点ID付き(重複削除済み)のGPSデータのパス(ファイルを指定する場合)
-# gps_with_objectid_removed = "ANJS001_temp3_info/gps_data_with_objectid_remove_duplicate.csv"
+
+if "self-made" not in road_network_csv:
+    logger.info("objectidごとにGPSデータの重複を除去開始")
+    logger.debug(f"使用プログラム: {inspect.getfile(GPSRemover)}")
+    # GPS_Removerのインスタンスを作成
+    remover = GPSRemover(
+        dir_path=info_save_dir,  # GPSデータの保存先ディレクトリのパス
+        gps_path=gps_with_objectid,  # 交差点ID付きのGPSデータのパス
+    )
+    # objectid列の重複を除去し、CSVに保存
+    gps_with_objectid_removed = remover()
+    # 交差点ID付き(重複削除済み)のGPSデータのパス(ファイルを指定する場合)
+    # gps_with_objectid_removed = "ANJS001_temp3_info/gps_data_with_objectid_remove_duplicate.csv"
+else:
+    gps_with_objectid_removed = gps_with_objectid
 
 logger.info("objectidごとにGPSデータを分割開始")
 logger.debug(f"使用プログラム: {inspect.getfile(GPSSplitter)}")
